@@ -1,6 +1,7 @@
 # SAMMUI SHAFTIN SUPPLEMENTARIES
 
 compilation of features i wanted from other mods and stuff especially corpse mute
+
 also checkout my super epic gemstone overlay ([modrinth](https://modrinth.com/resourcepack/super-epic-gemstone-mining-overlay))
 
 ### dependencies: 
