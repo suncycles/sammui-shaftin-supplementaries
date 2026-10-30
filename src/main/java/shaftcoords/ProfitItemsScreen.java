@@ -21,7 +21,7 @@ import java.util.Set;
  */
 final class ProfitItemsScreen extends Screen {
     private static final int W = 400, PER_PAGE = 8, TOP = 26;
-    private static final List<String> SOURCES = List.of("DEFAULT", "INSTANT_SELL", "SELL_ORDER", "NPC_SELL");
+
     private final Screen parent;
     private final Config.Profit cfg = Config.INSTANCE.profit;
     private int page;
@@ -49,7 +49,7 @@ final class ProfitItemsScreen extends Screen {
                 b.setMessage(tracked(item));
             }).bounds(x + 230, y, 70, 20).build());
             addRenderableWidget(CycleButton.builder((String s) -> Component.literal(s.equals("DEFAULT") ? "Default" : ProfitTracker.sourceName(s)),
-                    cfg.itemSources.getOrDefault(item, "DEFAULT")).withValues(SOURCES).displayOnlyValue()
+                    cfg.itemSources.getOrDefault(item, "DEFAULT")).withValues(ProfitTracker.ITEM_SOURCES).displayOnlyValue()
                     .create(x + 302, y, 98, 20, Component.literal("Price"), (b, v) -> {
                         if (v.equals("DEFAULT")) cfg.itemSources.remove(item);
                         else cfg.itemSources.put(item, v);

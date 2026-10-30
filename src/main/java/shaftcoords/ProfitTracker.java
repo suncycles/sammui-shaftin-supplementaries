@@ -15,10 +15,14 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
+import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
+import net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 
@@ -31,6 +35,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.IntConsumer;
 
 /**
  * The mining Profit Tracker, SkySoft's: in the mining islands (Gold Mine, Deep Caverns, Dwarven Mines and the Glacite
@@ -62,7 +67,8 @@ public final class ProfitTracker {
             "ASCENSION_ROPE", "WISHING_COMPASS", "OIL_BARREL", "JUNGLE_HEART", "GOBLIN_EGG", "GOBLIN_EGG_GREEN", "GOBLIN_EGG_YELLOW",
             "GOBLIN_EGG_RED", "GOBLIN_EGG_BLUE", "TREASURITE", "ELECTRON_TRANSMITTER", "FTX_3070", "ROBOTRON_REFLECTOR", "CONTROL_SWITCH",
             "SYNTHETIC_HEART", "SUPERLITE_MOTOR", "YOGGIE");
-    static final List<String> PERIODS = List.of("SESSION", "TODAY", "TOTAL"), SOURCES = List.of("INSTANT_SELL", "SELL_ORDER", "NPC_SELL");
+    static final List<String> PERIODS = List.of("SESSION", "TODAY", "TOTAL"), SOURCES = List.of("INSTANT_SELL", "SELL_ORDER", "NPC_SELL"),
+            ITEM_SOURCES = List.of("DEFAULT", "INSTANT_SELL", "SELL_ORDER", "NPC_SELL");  // an item's: DEFAULT, the tracker's
     static final long SAVE_MS = 60_000, HIGHLIGHT_MS = 2000;
     private static final List<IslandType> ISLANDS = List.of(IslandType.GOLD_MINES, IslandType.DEEP_CAVERNS, IslandType.DWARVEN_MINES,
             IslandType.CRYSTAL_HOLLOWS, IslandType.MINESHAFT);
@@ -80,14 +86,22 @@ public final class ProfitTracker {
     private final Saved saved = load();
     private final Map<String, Long> changedAt = new HashMap<>();  // when each item's count last went up
     private long lastActivity, lastTick, savedAt;
-    private boolean paused, dirty;
+    private boolean paused, dirty, inMenu, resetArmed;  // inMenu: last drawn over a menu, clickable
+    private List<Line> shown = List.of();               // the lines last drawn, at shownScale
+    private float shownScale = 1;
     int hudX, hudY, hudW, hudH;  // where the HUD was last drawn, screen pixels (HudMoveScreen)
 
     void init() {
         ClientTickEvents.END_CLIENT_TICK.register(mc -> tick());
         ClientLifecycleEvents.CLIENT_STOPPING.register(mc -> save());
-        HudElementRegistry.attachElementAfter(VanillaHudElements.BOSS_BAR, Identifier.fromNamespaceAndPath("sammui-shaftin-supplementaries", "profit"),
-                (g, delta) -> render(g, false));
+        HudElementRegistry.attachElementAfter(VanillaHudElements.BOSS_BAR, Identifier.fromNamespaceAndPath("sammui-shaftin-supplementaries", "profit"), (g, delta) -> {
+            if (!(Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?>)) render(g, false, false, -1, -1);  // in one: over it
+        });
+        ScreenEvents.AFTER_INIT.register((mc, screen, w, h) -> {
+            if (!(screen instanceof AbstractContainerScreen<?>)) return;
+            ScreenEvents.afterExtract(screen).register((s, g, mouseX, mouseY, delta) -> render(g, false, true, mouseX, mouseY));
+            ScreenMouseEvents.allowMouseClick(screen).register((s, event) -> !click(event));
+        });
     }
 
     static String periodName(String period) {
@@ -202,12 +216,20 @@ public final class ProfitTracker {
         if (dirty && now - savedAt > SAVE_MS) save();
     }
 
-    /** The HUD; `preview` draws it anywhere (HudMoveScreen), else only while tracking. */
-    void render(GuiGraphicsExtractor g, boolean preview) {
+    /**
+     * The HUD; `preview` draws it anywhere (HudMoveScreen), else only while tracking. In a `menu` (a container screen:
+     * your inventory, a chest) it's drawn over the menu, as SkySoft's is, with lines you click to change it: the period,
+     * price source and gemstone pricing (left-click next, right-click back), a reset (confirmed), the items (left-click
+     * cycles one's price source, right-click stops tracking it) and Manage items; the line under the mouse lit, its hint
+     * at the bottom. The mouse is at `mouseX`, `mouseY`.
+     */
+    void render(GuiGraphicsExtractor g, boolean preview, boolean menu, int mouseX, int mouseY) {
         Config.Profit cfg = Config.INSTANCE.profit;
         Minecraft mc = Minecraft.getInstance();
+        if (menu) inMenu = false;
         if (!preview && !active()) return;  // F1 hides the whole HUD, this too
         Font font = mc.font;
+        int hovered = menu ? lineAt(mouseX, mouseY) : -1;  // by the last frame's lines
         ProfitStats s = stats(cfg.period);
         record Row(String item, long count, Double price) {
             double value() {
@@ -221,33 +243,61 @@ public final class ProfitTracker {
         rows.sort(Comparator.comparingDouble(Row::value).reversed().thenComparing(Comparator.comparingLong(Row::count).reversed()));
         double total = rows.stream().mapToDouble(Row::value).sum() + (cfg.lines.contains("COINS") ? s.coins : 0);
 
-        record Line(boolean item, ItemStack icon, String left, String right) {}  // item: an item's row (its icon's room, with icons on)
         List<Line> lines = new ArrayList<>();
-        lines.add(new Line(false, null, "§e§lMining Profit §7(" + periodName(cfg.period) + ")" + (paused && !preview ? " §c(paused)" : ""), ""));
+        lines.add(new Line(false, null, "§e§lMining Profit §7(" + periodName(cfg.period) + ")" + (paused && !preview ? " §c(paused)" : ""), "", null, null));
         long now = System.currentTimeMillis();
         for (Row r : rows.subList(0, Math.min(rows.size(), Math.max(0, cfg.maxItems)))) {
-            String q = (cfg.highlight && now - changedAt.getOrDefault(r.item(), 0L) < HIGHLIGHT_MS ? "§a" : "§7") + ProfitStats.count(r.count()) + "x";
-            String name = Sh.name(r.item());
-            lines.add(new Line(true, cfg.icons ? Sh.stack(r.item()) : null, cfg.quantityLeft ? q + " §r" + name : name + " " + q,
-                    r.price() == null ? "§8?" : "§6" + ProfitStats.coins(r.value())));
+            String item = r.item(), q = (cfg.highlight && now - changedAt.getOrDefault(item, 0L) < HIGHLIGHT_MS ? "§a" : "§7") + ProfitStats.count(r.count()) + "x";
+            String name = Sh.name(item), own = cfg.itemSources.get(item);
+            lines.add(new Line(true, cfg.icons ? Sh.stack(item) : null, cfg.quantityLeft ? q + " §r" + name : name + " " + q,
+                    r.price() == null ? "§8?" : "§6" + ProfitStats.coins(r.value()),
+                    b -> {
+                        if (b == 1) cfg.excluded.add(item);
+                        else {
+                            String next = cycle(ITEM_SOURCES, own == null ? "DEFAULT" : own, 0);
+                            if (next.equals("DEFAULT")) cfg.itemSources.remove(item);
+                            else cfg.itemSources.put(item, next);
+                        }
+                    },
+                    "§8Left-click: price §7(" + (own == null ? "Default" : sourceName(own)) + "§7)§8, right-click: stop tracking"));
         }
-        if (rows.size() > cfg.maxItems) lines.add(new Line(false, null, "§8+" + (rows.size() - cfg.maxItems) + " more", ""));
-        if (rows.isEmpty()) lines.add(new Line(false, null, "§8Nothing mined yet", ""));
+        if (rows.size() > cfg.maxItems) lines.add(new Line(false, null, "§8+" + (rows.size() - cfg.maxItems) + " more", "", null, null));
+        if (rows.isEmpty()) lines.add(new Line(false, null, "§8Nothing mined yet", "", null, null));
         for (String l : Config.Profit.LINES) {
             if (!cfg.lines.contains(l)) continue;
             lines.add(switch (l) {
-                case "COINS" -> new Line(false, null, "§7Coins", "§6" + ProfitStats.coins(s.coins));
-                case "TOTAL_PROFIT" -> new Line(false, null, "§7Total Profit", "§6" + ProfitStats.coins(total));
-                case "PROFIT_PER_HOUR" -> new Line(false, null, "§7Profit/h", "§6" + ProfitStats.coins(ProfitStats.perHour(total, s.uptimeMs)));
-                case "BLOCKS" -> new Line(false, null, "§7Blocks Mined", "§f" + ProfitStats.count(s.blocks));
-                default -> new Line(false, null, "§7Uptime", "§f" + ProfitStats.time(s.uptimeMs));
+                case "COINS" -> new Line(false, null, "§7Coins", "§6" + ProfitStats.coins(s.coins), null, null);
+                case "TOTAL_PROFIT" -> new Line(false, null, "§7Total Profit", "§6" + ProfitStats.coins(total), null, null);
+                case "PROFIT_PER_HOUR" -> new Line(false, null, "§7Profit/h", "§6" + ProfitStats.coins(ProfitStats.perHour(total, s.uptimeMs)), null, null);
+                case "BLOCKS" -> new Line(false, null, "§7Blocks Mined", "§f" + ProfitStats.count(s.blocks), null, null);
+                default -> new Line(false, null, "§7Uptime", "§f" + ProfitStats.time(s.uptimeMs), null, null);
             });
+        }
+        if (menu) {
+            String period = periodName(cfg.period);
+            lines.add(new Line(false, null, "§7Display Mode §a§l[" + period + "]", "", b -> cfg.period = cycle(PERIODS, cfg.period, b), "§8Left-click: next, right-click: back"));
+            lines.add(new Line(false, null, "§7Price Source §e§l[" + sourceName(cfg.priceSource) + "]", "",
+                    b -> cfg.priceSource = cycle(SOURCES, cfg.priceSource, b), "§8Left-click: next, right-click: back"));
+            lines.add(new Line(false, null, "§7Gemstones §b§l[" + (cfg.gemsByFlawless ? "Flawless" : "Own price") + "]", "",
+                    b -> cfg.gemsByFlawless = !cfg.gemsByFlawless, "§8Flawless: rough, flawed, fine priced from the flawless one"));
+            if (resetArmed) {
+                lines.add(new Line(false, null, "§a[Confirm]", "", b -> {
+                    reset(cfg.period);
+                    resetArmed = false;
+                }, "§7Reset " + period + " data."));
+                lines.add(new Line(false, null, "§c[Cancel]", "", b -> resetArmed = false, null));
+            } else {
+                lines.add(new Line(false, null, "§c[Reset " + period + "]", "", b -> resetArmed = true, "§7Reset " + period + " data."));
+            }
+            lines.add(new Line(false, null, "§7[Manage items]", "", b -> manage(), "§7Manage tracked items."));
+            String hint = hovered >= 0 && hovered < shown.size() ? shown.get(hovered).hint() : null;
+            lines.add(new Line(false, null, hint == null ? "§8Click a line to change it" : hint, "", null, null));
         }
 
         int iconW = cfg.icons ? 18 : 0, w = 0, h = 0;
         for (Line l : lines) {
             w = Math.max(w, (l.item() ? iconW : 0) + font.width(l.left()) + (l.right().isEmpty() ? 0 : 10 + font.width(l.right())));
-            h += l.item() && cfg.icons ? 18 : 11;
+            h += height(l);
         }
         float scale = cfg.scale;
         int x = cfg.x < 0 ? Math.round(g.guiWidth() + cfg.x - w * scale) : cfg.x, y = cfg.y;
@@ -258,10 +308,12 @@ public final class ProfitTracker {
         g.pose().pushMatrix();
         g.pose().translate(x, y);
         g.pose().scale(scale, scale);
-        if (cfg.background || preview) g.fill(-3, -3, w + 3, h + 1, preview ? 0x60000000 : 0x80000000);
+        if (cfg.background || preview || menu) g.fill(-3, -3, w + 3, h + 1, preview ? 0x60000000 : menu ? 0xD0101010 : 0x80000000);
         int ly = 0;
-        for (Line l : lines) {
-            int lh = l.item() && cfg.icons ? 18 : 11, tx = l.item() ? iconW : 0;
+        for (int i = 0; i < lines.size(); i++) {
+            Line l = lines.get(i);
+            int lh = height(l), tx = l.item() ? iconW : 0;
+            if (i == hovered && l.click() != null) g.fill(-2, ly, w + 2, ly + lh, 0x30FFFFFF);
             if (l.icon() != null) g.item(l.icon(), 0, ly);
             int ty = ly + (lh - 8) / 2;
             g.text(font, l.left(), tx, ty, 0xFFFFFFFF, true);
@@ -269,6 +321,53 @@ public final class ProfitTracker {
             ly += lh;
         }
         g.pose().popMatrix();
+        shown = lines;
+        shownScale = scale;
+        inMenu = menu;
+    }
+
+    /** A HUD line: `item`, an item's row (its icon's room, with icons on); `click`, what a click on it does in a menu (by mouse button, 1 right). */
+    private record Line(boolean item, ItemStack icon, String left, String right, IntConsumer click, String hint) {}
+
+    private int height(Line l) {
+        return l.item() && Config.INSTANCE.profit.icons ? 18 : 11;
+    }
+
+    /** The shown line at screen `x`, `y`, or -1. */
+    private int lineAt(double x, double y) {
+        if (x < hudX || x > hudX + hudW || y < hudY || y >= hudY + hudH) return -1;
+        double ly = (y - hudY) / shownScale;
+        int top = 0;
+        for (int i = 0; i < shown.size(); i++) {
+            int lh = height(shown.get(i));
+            if (ly >= top && ly < top + lh) return i;
+            top += lh;
+        }
+        return -1;
+    }
+
+    /** A click in a menu: true if it was on one of the HUD's lines, done (the menu doesn't get it). */
+    private boolean click(MouseButtonEvent event) {
+        if (!inMenu) return false;
+        int i = lineAt(event.x(), event.y());
+        IntConsumer click = i < 0 ? null : shown.get(i).click();
+        if (click == null) return false;
+        click.accept(event.button());
+        Config.INSTANCE.save();
+        return true;
+    }
+
+    /** The next of `values` after `current` (button 1, right-click: the one before). */
+    private static String cycle(List<String> values, String current, int button) {
+        int i = Math.max(0, values.indexOf(current)), n = values.size();
+        return values.get(((button == 1 ? i - 1 : i + 1) % n + n) % n);
+    }
+
+    /** Manage items: leaves the menu (closing it, as Esc does) for ProfitItemsScreen. */
+    private void manage() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.gui.screen() != null) mc.gui.screen().onClose();
+        mc.gui.setScreen(new ProfitItemsScreen(null));
     }
 
     private Saved load() {

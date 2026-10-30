@@ -28,7 +28,7 @@ final class HudMoveScreen extends Screen {
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partialTick) {
         super.extractRenderState(g, mouseX, mouseY, partialTick);
-        ProfitTracker.INSTANCE.render(g, true);
+        ProfitTracker.INSTANCE.render(g, true, false, -1, -1);
         g.centeredText(font, "Drag the tracker to move it, scroll to resize it (" + Math.round(cfg.scale * 100) + "%), Esc when done",
                 width / 2, height - 20, 0xFFFFFFFF);
     }
