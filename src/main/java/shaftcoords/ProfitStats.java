@@ -1,6 +1,7 @@
 package shaftcoords;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -31,6 +32,18 @@ final class ProfitStats {
 
     void add(String item, long amount) {
         items.merge(item, amount, Long::sum);
+    }
+
+    /** a and b added up, a new one. */
+    static ProfitStats sum(ProfitStats a, ProfitStats b) {
+        ProfitStats s = new ProfitStats();
+        for (ProfitStats p : List.of(a, b)) {
+            p.items.forEach(s::add);
+            s.coins += p.coins;
+            s.blocks += p.blocks;
+            s.uptimeMs += p.uptimeMs;
+        }
+        return s;
     }
 
     /** 1.23M, 456.7k, 789. */

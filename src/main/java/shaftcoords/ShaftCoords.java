@@ -8,11 +8,9 @@ import at.hannibal2.skyhanni.data.ProfileStorageData;
 import at.hannibal2.skyhanni.data.model.waypoints.SkyHanniWaypoint;
 import at.hannibal2.skyhanni.data.model.waypoints.WaypointFormats;
 import at.hannibal2.skyhanni.data.model.waypoints.Waypoints;
-import at.hannibal2.skyhanni.data.model.TabWidget;
 import at.hannibal2.skyhanni.events.IslandChangeEvent;
 import at.hannibal2.skyhanni.events.PlaySoundEvent;
 import at.hannibal2.skyhanni.events.SecondPassedEvent;
-import at.hannibal2.skyhanni.events.WidgetUpdateEvent;
 import at.hannibal2.skyhanni.events.entity.EntityClickEvent;
 import at.hannibal2.skyhanni.events.mining.GlaciteMineshaftDetectEvent;
 import at.hannibal2.skyhanni.features.mining.glacitemineshaft.MineshaftDetection;
@@ -90,11 +88,6 @@ public final class ShaftCoords implements ClientModInitializer {
             CorpseEsp.shaft(type.name(), type.getColor().getChatColor());
             if (Config.INSTANCE.autoStart) load(type.name(), type.getDisplayName(), true);
         });
-    }
-
-    @HandleEvent
-    public void onWidget(WidgetUpdateEvent event) {
-        if (event.isWidget(TabWidget.FROZEN_CORPSES)) CorpseEsp.tabList(event.getCleanLines());
     }
 
     @HandleEvent(onlyOnIsland = IslandType.MINESHAFT)

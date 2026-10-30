@@ -57,20 +57,24 @@ final class ProfitScreen extends Screen {
                 b.setMessage(lineLabel(line, name));
             }).bounds(x + i * 80, 116, 78, 20).build());
         }
+        addRenderableWidget(CycleButton.builder((String a) -> Component.literal(ProfitTracker.areaName(a)), cfg.area)
+                .withValues(ProfitTracker.AREAS).create(x, 142, 98, 20, Component.literal("Area"), (b, v) -> cfg.area = v))
+                .setTooltip(Tooltip.create(Component.literal("Shown (and reset): what you got in a mineshaft, outside one, or all of it")));
         for (int i = 0; i < ProfitTracker.PERIODS.size(); i++) {
             String period = ProfitTracker.PERIODS.get(i);
             addRenderableWidget(Button.builder(resetLabel(period), b -> {
                 long now = System.currentTimeMillis();
                 if (period.equals(armed) && now - armedAt < 3000) {
-                    ProfitTracker.INSTANCE.reset(period);
+                    ProfitTracker.INSTANCE.reset(period, cfg.area);
                     armed = null;
                     b.setMessage(Component.literal("§a" + ProfitTracker.periodName(period) + " reset"));
                 } else {
                     armed = period;
                     armedAt = now;
-                    b.setMessage(Component.literal("§cClick again to reset"));
+                    b.setMessage(Component.literal("§cClick again"));
                 }
-            }).bounds(x + i * 134, 142, 132, 20).build());
+            }).bounds(x + 100 + i * 100, 142, i == 2 ? 100 : 98, 20).build())
+                    .setTooltip(Tooltip.create(Component.literal("Resets this period in the area shown (Area)")));
         }
         addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, b -> onClose()).bounds(width / 2 - 75, 172, 150, 20).build());
     }

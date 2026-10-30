@@ -38,6 +38,16 @@ public final class MiningCheck {
         s.add("GLACITE", 64);
         s.add("GLACITE", 10);
         fails += check(s.items.get("GLACITE") == 74, "items add up");
+        ProfitStats shaft = new ProfitStats();
+        shaft.add("GLACITE", 6);
+        shaft.add("UMBER", 3);
+        shaft.coins = 10;
+        shaft.blocks = 4;
+        shaft.uptimeMs = 1000;
+        s.uptimeMs = 2000;
+        ProfitStats all = ProfitStats.sum(s, shaft);
+        fails += check(all.items.equals(java.util.Map.of("GLACITE", 80L, "UMBER", 3L)) && all.coins == 10 && all.blocks == 4 && all.uptimeMs == 3000
+                && s.items.get("GLACITE") == 74, "in and out of mineshafts added up, neither changed");
         System.out.println(fails == 0 ? "ok    mining: bugged pity, profit numbers" : fails + " failed");
         System.exit(fails == 0 ? 0 : 1);
     }

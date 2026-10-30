@@ -42,7 +42,8 @@ import java.util.function.IntConsumer;
  * Tunnels, Crystal Hollows, mineshafts) the MINING items you gain, into your inventory or sacks (SkyHanni's ItemAddEvent),
  * are counted and valued by Config.Profit's price source; with the coins you pick up (no menu open), the blocks you mine
  * and the time you're at it (paused after Config.Profit.pauseAfter seconds with none of that). Three periods: this
- * session, today and in total (the last two kept in FILE). The HUD shows one, its most valuable items and the summary lines.
+ * session, today and in total (the last two kept in FILE); each in a Glacite Mineshaft and outside one, apart. The HUD
+ * shows a period in an area (Mineshaft, Outside, or All: the two added up), its most valuable items and the summary lines.
  */
 @SkyHanniModule  // SkyHanni's event bus takes handlers only from these (and public)
 public final class ProfitTracker {
@@ -67,7 +68,8 @@ public final class ProfitTracker {
             "ASCENSION_ROPE", "WISHING_COMPASS", "OIL_BARREL", "JUNGLE_HEART", "GOBLIN_EGG", "GOBLIN_EGG_GREEN", "GOBLIN_EGG_YELLOW",
             "GOBLIN_EGG_RED", "GOBLIN_EGG_BLUE", "TREASURITE", "ELECTRON_TRANSMITTER", "FTX_3070", "ROBOTRON_REFLECTOR", "CONTROL_SWITCH",
             "SYNTHETIC_HEART", "SUPERLITE_MOTOR", "YOGGIE");
-    static final List<String> PERIODS = List.of("SESSION", "TODAY", "TOTAL"), SOURCES = List.of("INSTANT_SELL", "SELL_ORDER", "NPC_SELL"),
+    static final List<String> PERIODS = List.of("SESSION", "TODAY", "TOTAL"), AREAS = List.of("ALL", "MINESHAFT", "OUTSIDE"),
+            SOURCES = List.of("INSTANT_SELL", "SELL_ORDER", "NPC_SELL"),
             ITEM_SOURCES = List.of("DEFAULT", "INSTANT_SELL", "SELL_ORDER", "NPC_SELL");  // an item's: DEFAULT, the tracker's
     static final long SAVE_MS = 60_000, HIGHLIGHT_MS = 2000;
     private static final List<IslandType> ISLANDS = List.of(IslandType.GOLD_MINES, IslandType.DEEP_CAVERNS, IslandType.DWARVEN_MINES,
@@ -76,13 +78,13 @@ public final class ProfitTracker {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     static final ProfitTracker INSTANCE = new ProfitTracker();  // after FILE and GSON, which it loads with
 
-    /** What's kept in FILE. */
+    /** What's kept in FILE: today and in total, outside a mineshaft (and from before the split, SkySoft's) and in one. */
     private static final class Saved {
         String date = LocalDate.now().toString();
-        ProfitStats today = new ProfitStats(), total = new ProfitStats();
+        ProfitStats today = new ProfitStats(), total = new ProfitStats(), todayShaft = new ProfitStats(), totalShaft = new ProfitStats();
     }
 
-    private ProfitStats session = new ProfitStats();
+    private ProfitStats session = new ProfitStats(), sessionShaft = new ProfitStats();
     private final Saved saved = load();
     private final Map<String, Long> changedAt = new HashMap<>();  // when each item's count last went up
     private long lastActivity, lastTick, savedAt;
@@ -112,6 +114,14 @@ public final class ProfitTracker {
         };
     }
 
+    static String areaName(String area) {
+        return switch (area) {
+            case "MINESHAFT" -> "Mineshaft";
+            case "OUTSIDE" -> "Outside";
+            default -> "All";
+        };
+    }
+
     static String sourceName(String source) {
         return switch (source) {
             case "INSTANT_SELL" -> "Instant Sell";
@@ -129,19 +139,40 @@ public final class ProfitTracker {
         return (MINING.contains(item) || cfg.custom.contains(item)) && !cfg.excluded.contains(item);
     }
 
-    ProfitStats stats(String period) {
-        return switch (period) {
+    /** A period's stats in an area: MINESHAFT, OUTSIDE, or ALL (the two added up, a copy). */
+    ProfitStats stats(String period, String area) {
+        ProfitStats outside = switch (period) {
             case "TODAY" -> saved.today;
             case "TOTAL" -> saved.total;
             default -> session;
+        }, shaft = switch (period) {
+            case "TODAY" -> saved.todayShaft;
+            case "TOTAL" -> saved.totalShaft;
+            default -> sessionShaft;
+        };
+        return switch (area) {
+            case "MINESHAFT" -> shaft;
+            case "OUTSIDE" -> outside;
+            default -> ProfitStats.sum(outside, shaft);
         };
     }
 
-    void reset(String period) {
+    /** Resets a period in an area (ALL: both). */
+    void reset(String period, String area) {
+        boolean outside = !area.equals("MINESHAFT"), shaft = !area.equals("OUTSIDE");
         switch (period) {
-            case "TODAY" -> saved.today = new ProfitStats();
-            case "TOTAL" -> saved.total = new ProfitStats();
-            default -> session = new ProfitStats();
+            case "TODAY" -> {
+                if (outside) saved.today = new ProfitStats();
+                if (shaft) saved.todayShaft = new ProfitStats();
+            }
+            case "TOTAL" -> {
+                if (outside) saved.total = new ProfitStats();
+                if (shaft) saved.totalShaft = new ProfitStats();
+            }
+            default -> {
+                if (outside) session = new ProfitStats();
+                if (shaft) sessionShaft = new ProfitStats();
+            }
         }
         save();
     }
@@ -163,10 +194,12 @@ public final class ProfitTracker {
         return flawless == null ? null : flawless / per;
     }
 
+    /** Adds to every period, in the area you're in. */
     private void each(java.util.function.Consumer<ProfitStats> f) {
-        f.accept(session);
-        f.accept(saved.today);
-        f.accept(saved.total);
+        boolean shaft = IslandType.MINESHAFT.isInIsland();
+        f.accept(shaft ? sessionShaft : session);
+        f.accept(shaft ? saved.todayShaft : saved.today);
+        f.accept(shaft ? saved.totalShaft : saved.total);
         dirty = true;
     }
 
@@ -207,6 +240,7 @@ public final class ProfitTracker {
         if (!today.equals(saved.date)) {
             saved.date = today;
             saved.today = new ProfitStats();
+            saved.todayShaft = new ProfitStats();
             dirty = true;
         }
         int pauseAfter = Config.INSTANCE.profit.pauseAfter;
@@ -230,7 +264,7 @@ public final class ProfitTracker {
         if (!preview && !active()) return;  // F1 hides the whole HUD, this too
         Font font = mc.font;
         int hovered = menu ? lineAt(mouseX, mouseY) : -1;  // by the last frame's lines
-        ProfitStats s = stats(cfg.period);
+        ProfitStats s = stats(cfg.period, cfg.area);
         record Row(String item, long count, Double price) {
             double value() {
                 return price == null ? 0 : count * price;
@@ -244,7 +278,8 @@ public final class ProfitTracker {
         double total = rows.stream().mapToDouble(Row::value).sum() + (cfg.lines.contains("COINS") ? s.coins : 0);
 
         List<Line> lines = new ArrayList<>();
-        lines.add(new Line(false, null, "§e§lMining Profit §7(" + periodName(cfg.period) + ")" + (paused && !preview ? " §c(paused)" : ""), "", null, null));
+        lines.add(new Line(false, null, "§e§lMining Profit §7(" + periodName(cfg.period) + (cfg.area.equals("ALL") ? "" : ", " + areaName(cfg.area)) + ")"
+                + (paused && !preview ? " §c(paused)" : ""), "", null, null));
         long now = System.currentTimeMillis();
         for (Row r : rows.subList(0, Math.min(rows.size(), Math.max(0, cfg.maxItems)))) {
             String item = r.item(), q = (cfg.highlight && now - changedAt.getOrDefault(item, 0L) < HIGHLIGHT_MS ? "§a" : "§7") + ProfitStats.count(r.count()) + "x";
@@ -274,15 +309,17 @@ public final class ProfitTracker {
             });
         }
         if (menu) {
-            String period = periodName(cfg.period);
-            lines.add(new Line(false, null, "§7Display Mode §a§l[" + period + "]", "", b -> cfg.period = cycle(PERIODS, cfg.period, b), "§8Left-click: next, right-click: back"));
+            String period = periodName(cfg.period) + (cfg.area.equals("ALL") ? "" : ", " + areaName(cfg.area));
+            lines.add(new Line(false, null, "§7Display Mode §a§l[" + periodName(cfg.period) + "]", "", b -> cfg.period = cycle(PERIODS, cfg.period, b), "§8Left-click: next, right-click: back"));
+            lines.add(new Line(false, null, "§7Area §d§l[" + areaName(cfg.area) + "]", "", b -> cfg.area = cycle(AREAS, cfg.area, b),
+                    "§8In a mineshaft, outside one, or all of it"));
             lines.add(new Line(false, null, "§7Price Source §e§l[" + sourceName(cfg.priceSource) + "]", "",
                     b -> cfg.priceSource = cycle(SOURCES, cfg.priceSource, b), "§8Left-click: next, right-click: back"));
             lines.add(new Line(false, null, "§7Gemstones §b§l[" + (cfg.gemsByFlawless ? "Flawless" : "Own price") + "]", "",
                     b -> cfg.gemsByFlawless = !cfg.gemsByFlawless, "§8Flawless: rough, flawed, fine priced from the flawless one"));
             if (resetArmed) {
                 lines.add(new Line(false, null, "§a[Confirm]", "", b -> {
-                    reset(cfg.period);
+                    reset(cfg.period, cfg.area);
                     resetArmed = false;
                 }, "§7Reset " + period + " data."));
                 lines.add(new Line(false, null, "§c[Cancel]", "", b -> resetArmed = false, null));
@@ -374,7 +411,11 @@ public final class ProfitTracker {
         try {
             if (Files.exists(FILE)) {
                 Saved s = GSON.fromJson(Files.readString(FILE), Saved.class);
-                if (s != null && s.today != null && s.total != null) return s;
+                if (s != null && s.today != null && s.total != null) {
+                    if (s.todayShaft == null) s.todayShaft = new ProfitStats();  // a file from before the split
+                    if (s.totalShaft == null) s.totalShaft = new ProfitStats();
+                    return s;
+                }
             }
         } catch (IOException | RuntimeException e) {
             ShaftCoords.LOG.warn("Can't read {}, starting the profit tracker afresh", FILE, e);

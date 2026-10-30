@@ -1,5 +1,6 @@
 package shaftcoords;
 
+import java.util.List;
 import java.util.Map;
 
 /** Self-check for Corpse, run by build.ps1: which corpse an armor stand is, the title, the colours; exits non-zero on failure. */
@@ -15,8 +16,11 @@ public final class CorpseCheck {
                 + check(Corpse.title(null, Map.of(Corpse.TUNGSTEN, 3, Corpse.LAPIS, 1, Corpse.VANGUARD, 0)).equals("§91L §73T"), "title in L U T V order, none left out")
                 + check(Corpse.title("§fOPAL C", Map.of()).equals("§fOPAL C") && Corpse.title(null, Map.of()).isEmpty(), "no corpses: the mineshaft alone")
                 + check(Corpse.rgb("#ff8800", 0) == 0xFF8800 && Corpse.rgb("FFAA00", 0) == 0xFFAA00, "colours read")
-                + check(Corpse.rgb("12345", 7) == 7 && Corpse.rgb("GGGGGG", 7) == 7 && Corpse.rgb(null, 7) == 7, "bad colours fall back");
-        System.out.println(fails == 0 ? "ok    corpses: gear to corpse, the title, colours" : fails + " failed");
+                + check(Corpse.rgb("12345", 7) == 7 && Corpse.rgb("GGGGGG", 7) == 7 && Corpse.rgb(null, 7) == 7, "bad colours fall back")
+                + check(Corpse.fromTab(List.of("Frozen Corpses:", " Lapis: NOT LOOTED", " §9Lapis§f: §cNOT LOOTED", " Umber: LOOTED", " Tungsten: NOT LOOTED", " Mystery: NOT LOOTED", ""))
+                        .equals(Map.of(Corpse.LAPIS, 2, Corpse.UMBER, 1, Corpse.TUNGSTEN, 1)), "the tab's Frozen Corpses")
+                + check(Corpse.fromTab(List.of("Frozen Corpses:")).isEmpty(), "the tab with no corpses yet");
+        System.out.println(fails == 0 ? "ok    corpses: gear to corpse, the tab, the title, colours" : fails + " failed");
         System.exit(fails == 0 ? 0 : 1);
     }
 

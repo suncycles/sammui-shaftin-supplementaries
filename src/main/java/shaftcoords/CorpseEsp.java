@@ -1,6 +1,7 @@
 package shaftcoords;
 
 import at.hannibal2.skyhanni.data.IslandType;
+import at.hannibal2.skyhanni.data.model.TabWidget;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Minecraft;
@@ -18,27 +19,26 @@ import net.minecraft.world.phys.AABB;
 
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.regex.Pattern;
 
 /**
  * Corpse ESP, after Blade Extras': in a Glacite Mineshaft each Frozen Corpse (see Corpse) gets a box in its colour
  * (Config.color), seen through walls, for Config.espLife seconds from when it's found with the seconds left over it (0:
- * till you leave), till you click it (to loot it). The title gives the mineshaft and counts its corpses, "PERI 1 2L 1U"
- * (Lapis blue, Umber orange, Tungsten grey, Vanguard dark aqua), once the shaft has loaded: SkyHanni knows its type and
- * every corpse the tab's Frozen Corpses lists has been found; or TITLE_FALLBACK ticks after its type, if they never are
- * (the widget turned off, say).
+ * till you leave), till you click it (to loot it). The title gives the mineshaft and its corpses, "PERI 1 2L 1U" (Lapis
+ * blue, Umber orange, Tungsten grey, Vanguard dark aqua), counted from the tab's Frozen Corpses widget, which lists every
+ * corpse in the shaft (the boxes come only as the server sends their armor stands, near you): once SkyHanni knows the
+ * type and that list has stayed the same TAB_SETTLE ticks. Without the widget, TITLE_FALLBACK ticks after the type,
+ * counting the corpses found by then.
  */
 final class CorpseEsp {
-    static final int TITLE_FALLBACK = 200;  // ticks: 10 s
-    private static final Pattern TAB_CORPSE = Pattern.compile("\\s*\\w+: (?:NOT )?LOOTED\\s*");  // SkyHanni's, a Frozen Corpses line
+    static final int TAB_SETTLE = 20, TITLE_FALLBACK = 200;  // ticks: 1 s, 10 s
     private record Found(ArmorStand stand, Corpse type, long at, boolean clicked) {}
     private static final Map<UUID, Found> found = new LinkedHashMap<>();  // by UUID: a corpse sent again isn't new
-    private static ClientLevel level;  // found's: a new one starts afresh
+    private static ClientLevel level;  // all this is the level's: a new one (another shaft, or out of one) starts afresh
     private static String shaft;       // the mineshaft's type in SkyHanni's colour, "§2PERI 1", once SkyHanni detects it
-    private static int tick, shaftAt, listed = -1;  // listed: corpses in the tab's Frozen Corpses, -1 till it's seen
+    private static Map<Corpse, Integer> tab = Map.of();  // the tab's Frozen Corpses, since tabAt
+    private static int tick, shaftAt, tabAt;
     private static boolean titled;
 
     static void init() {
@@ -52,11 +52,6 @@ final class CorpseEsp {
         shaftAt = tick;
     }
 
-    /** The tab's Frozen Corpses widget, its lines without formatting. */
-    static void tabList(List<String> lines) {
-        listed = (int) lines.stream().filter(l -> TAB_CORPSE.matcher(l).matches()).count();
-    }
-
     /** You clicked an entity: if it's a corpse, its box goes. */
     static void clicked(Entity e) {
         found.computeIfPresent(e.getUUID(), (id, f) -> new Found(f.stand(), f.type(), f.at(), true));
@@ -65,15 +60,14 @@ final class CorpseEsp {
     private static void tick(Minecraft mc) {
         tick++;
         Config cfg = Config.INSTANCE;
-        boolean in = mc.level != null && IslandType.MINESHAFT.isInIsland();
-        if (mc.level != level || !in) {
+        if (mc.level != level) {  // not on leaving the island: SkyHanni may say it's a mineshaft after its type's come
             found.clear();
             level = mc.level;
             shaft = null;
-            listed = -1;
+            tab = Map.of();
             titled = false;
         }
-        if (!in || !(cfg.corpseEsp || cfg.corpseTitle)) return;
+        if (mc.level == null || !IslandType.MINESHAFT.isInIsland() || !(cfg.corpseEsp || cfg.corpseTitle)) return;
         for (Entity e : mc.level.entitiesForRendering()) {
             if (!(e instanceof ArmorStand stand)) continue;
             UUID at = stand.getUUID();
@@ -87,10 +81,19 @@ final class CorpseEsp {
                     boots.getHoverName().getString());
             if (type != null) found.put(at, new Found(stand, type, System.currentTimeMillis(), false));
         }
-        if (!titled && shaft != null && cfg.corpseTitle && (listed >= 0 && found.size() >= listed || tick - shaftAt >= TITLE_FALLBACK)) {
+        if (titled || shaft == null || !cfg.corpseTitle) return;
+        Map<Corpse, Integer> now = TabWidget.FROZEN_CORPSES.isActive()
+                ? Corpse.fromTab(TabWidget.FROZEN_CORPSES.getLines().stream().map(Component::getString).toList()) : Map.of();
+        if (!now.equals(tab)) {
+            tab = now;
+            tabAt = tick;
+        }
+        boolean listed = !tab.isEmpty() && tick - tabAt >= TAB_SETTLE;
+        if (listed || tick - shaftAt >= TITLE_FALLBACK) {
             titled = true;
             Map<Corpse, Integer> count = new EnumMap<>(Corpse.class);
-            for (Found f : found.values()) count.merge(f.type(), 1, Integer::sum);
+            if (listed) count.putAll(tab);
+            else for (Found f : found.values()) count.merge(f.type(), 1, Integer::sum);
             mc.gui.hud.setTimes(5, 40, 10);
             mc.gui.hud.setSubtitle(Component.empty());
             mc.gui.hud.setTitle(Component.literal(Corpse.title(shaft, count)));

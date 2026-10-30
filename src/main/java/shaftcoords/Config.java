@@ -50,6 +50,7 @@ final class Config {
         float scale = 0.8f;
         Set<String> excluded = new TreeSet<>(), custom = new TreeSet<>();  // items not tracked; items tracked besides the preset's
         Map<String, String> itemSources = new TreeMap<>();     // an item's own price source
+        String area = "ALL";                                   // shown: MINESHAFT, OUTSIDE or ALL (the two added up)
     }
 
     private static Config load() {
@@ -68,6 +69,7 @@ final class Config {
                     if (p.itemSources == null) p.itemSources = d.itemSources;
                     if (p.period == null) p.period = d.period;
                     if (p.priceSource == null) p.priceSource = d.priceSource;
+                    if (p.area == null) p.area = d.area;
                     return c;
                 }
             }

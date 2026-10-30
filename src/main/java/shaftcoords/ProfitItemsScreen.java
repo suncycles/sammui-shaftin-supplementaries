@@ -34,7 +34,7 @@ final class ProfitItemsScreen extends Screen {
 
     @Override
     protected void init() {
-        ProfitStats shown = ProfitTracker.INSTANCE.stats(cfg.period);
+        ProfitStats shown = ProfitTracker.INSTANCE.stats(cfg.period, cfg.area);
         Set<String> all = new LinkedHashSet<>(ProfitTracker.MINING);
         all.addAll(cfg.custom);
         items = new ArrayList<>(all);
@@ -86,7 +86,7 @@ final class ProfitItemsScreen extends Screen {
         super.extractRenderState(g, mouseX, mouseY, partialTick);
         int x = (width - W) / 2;
         g.centeredText(font, title.getString() + " (" + (page + 1) + "/" + ((items.size() + PER_PAGE - 1) / PER_PAGE) + ")", width / 2, 8, 0xFFFFFFFF);
-        ProfitStats shown = ProfitTracker.INSTANCE.stats(cfg.period);
+        ProfitStats shown = ProfitTracker.INSTANCE.stats(cfg.period, cfg.area);
         for (int r = 0; r < PER_PAGE && page * PER_PAGE + r < items.size(); r++) {
             String item = items.get(page * PER_PAGE + r);
             long n = shown.items.getOrDefault(item, 0L);

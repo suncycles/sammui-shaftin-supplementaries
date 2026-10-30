@@ -1,6 +1,10 @@
 package shaftcoords;
 
+import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * A Glacite Mineshaft's Frozen Corpse, by what its armor stand wears (as Blade Extras' Corpse ESP tells them): a sea
@@ -37,6 +41,22 @@ enum Corpse {
         }
         return shaft == null ? s.toString() : s.isEmpty() ? shaft : shaft + " " + s;
     }
+
+    /**
+     * The corpses a mineshaft has, by the tab's Frozen Corpses widget: a line each, "Lapis: NOT LOOTED" (SkyHanni's
+     * pattern; formatting codes ignored). Kinds this doesn't know are left out.
+     */
+    static Map<Corpse, Integer> fromTab(List<String> lines) {
+        Map<Corpse, Integer> count = new EnumMap<>(Corpse.class);
+        for (String line : lines) {
+            Matcher m = TAB_LINE.matcher(line.replaceAll("§.", ""));
+            if (!m.matches()) continue;
+            for (Corpse c : values()) if (c.name().equalsIgnoreCase(m.group(1))) count.merge(c, 1, Integer::sum);
+        }
+        return count;
+    }
+
+    private static final Pattern TAB_LINE = Pattern.compile("\\s*(\\w+): (?:NOT )?LOOTED\\s*");
 
     /** "FFAA00" (or "#FFAA00") as RGB, or `fallback` if it isn't 6 hex digits. */
     static int rgb(String hex, int fallback) {
