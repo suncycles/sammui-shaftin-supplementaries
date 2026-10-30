@@ -8,6 +8,7 @@ import at.hannibal2.skyhanni.events.IslandChangeEvent;
 import at.hannibal2.skyhanni.events.WidgetUpdateEvent;
 import at.hannibal2.skyhanni.events.mining.OreMinedEvent;
 import at.hannibal2.skyhanni.features.mining.MineshaftPityDisplay;
+import at.hannibal2.skyhanni.features.mining.OreBlock;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
@@ -42,8 +43,9 @@ public final class BuggedPity {
 
     @HandleEvent
     public void onOreMined(OreMinedEvent event) {
-        if (Config.INSTANCE.buggedPity && MiningApi.INSTANCE.inGlacialTunnels()
-                && MineshaftPityDisplay.PityBlock.Companion.getPityBlock(event.getOriginalOre()) != null) {
+        OreBlock ore = event.getOriginalOre();  // null for some blocks: SkyHanni checks before getPityBlock too
+        if (ore != null && Config.INSTANCE.buggedPity && MiningApi.INSTANCE.inGlacialTunnels()
+                && MineshaftPityDisplay.PityBlock.Companion.getPityBlock(ore) != null) {
             watch.mined(System.currentTimeMillis());
         }
     }
