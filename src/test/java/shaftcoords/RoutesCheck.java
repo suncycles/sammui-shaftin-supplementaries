@@ -6,7 +6,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-/** Self-check for Routes, run by build.ps1 with the project folder (where the route .txt files are); exits non-zero on failure. */
+/** Self-check for Routes, run by build.ps1 with the routes' folder (src\main\resources\routes); exits non-zero on failure. */
 public final class RoutesCheck {
     // SkyHanni 9.2.0's MineshaftDetection.MineshaftType, all of them
     static final String[] TYPES = {"TOPA_1", "TOPA_2", "SAPP_1", "SAPP_2", "AMET_1", "AMET_2", "AMBE_1", "AMBE_2", "JADE_1",

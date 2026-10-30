@@ -8,9 +8,12 @@ import at.hannibal2.skyhanni.data.ProfileStorageData;
 import at.hannibal2.skyhanni.data.model.waypoints.SkyHanniWaypoint;
 import at.hannibal2.skyhanni.data.model.waypoints.WaypointFormats;
 import at.hannibal2.skyhanni.data.model.waypoints.Waypoints;
+import at.hannibal2.skyhanni.data.model.TabWidget;
 import at.hannibal2.skyhanni.events.IslandChangeEvent;
 import at.hannibal2.skyhanni.events.PlaySoundEvent;
 import at.hannibal2.skyhanni.events.SecondPassedEvent;
+import at.hannibal2.skyhanni.events.WidgetUpdateEvent;
+import at.hannibal2.skyhanni.events.entity.EntityClickEvent;
 import at.hannibal2.skyhanni.events.mining.GlaciteMineshaftDetectEvent;
 import at.hannibal2.skyhanni.features.mining.glacitemineshaft.MineshaftDetection;
 import at.hannibal2.skyhanni.skyhannimodule.SkyHanniModule;
@@ -33,13 +36,14 @@ import java.util.Locale;
 
 /**
  * SAMMUI SHAFTIN SUPPLEMENTARIES, a SkyHanni addon: the moment SkyHanni's Mineshaft Detection knows which Glacite Mineshaft you're in,
- * that mineshaft's route (see Routes, bundled from the *_shaft.txt files) goes into SkyHanni's Ordered Waypoints: saved
+ * that mineshaft's route (see Routes, bundled from src/main/resources/routes) goes into SkyHanni's Ordered Waypoints: saved
  * in SkyHanni's routes as ROUTE (replaced each time) and loaded with /sho load, so SkyHanni does the rest (nearest
  * waypoint first, its chat message, /sho skip and the others). /sss load <shaft> does the same by hand, for a type as
  * SkyHanni names it (AMBE_1, RUBY_C, ...; or "peri 1"). Chat says ">> Loaded crystal route", ">> No route for Topaz 1
  * mineshaft", or, DETECT_MS into a mineshaft with no type from SkyHanni, ">> Failed to detect shaft". Also Corpse ESP
- * (CorpseEsp). /sss alone opens the settings (ConfigScreen): with "Auto start route" off, or a route turned off there,
- * entering doesn't load it (/sss load still does).
+ * (CorpseEsp), the bugged pity alarm (BuggedPity) and the mining Profit Tracker (ProfitTracker). /sss alone opens the
+ * settings (ConfigScreen): with "Auto start route" off, or a route turned off there, entering doesn't load it (/sss load
+ * still does).
  */
 @SkyHanniModule
 public final class ShaftCoords implements ClientModInitializer {
@@ -52,7 +56,11 @@ public final class ShaftCoords implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         SkyHanniEvents.INSTANCE.register(this);
+        SkyHanniEvents.INSTANCE.register(BuggedPity.INSTANCE);
+        SkyHanniEvents.INSTANCE.register(ProfitTracker.INSTANCE);
         CorpseEsp.init();
+        BuggedPity.INSTANCE.init();
+        ProfitTracker.INSTANCE.init();
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, context) -> dispatcher.register(
                 ClientCommands.literal("sss").executes(c -> {  // SAMMUI SHAFTIN SUPPLEMENTARIES
                     openSettings = true;
@@ -82,6 +90,16 @@ public final class ShaftCoords implements ClientModInitializer {
             CorpseEsp.shaft(type.name(), type.getColor().getChatColor());
             if (Config.INSTANCE.autoStart) load(type.name(), type.getDisplayName(), true);
         });
+    }
+
+    @HandleEvent
+    public void onWidget(WidgetUpdateEvent event) {
+        if (event.isWidget(TabWidget.FROZEN_CORPSES)) CorpseEsp.tabList(event.getCleanLines());
+    }
+
+    @HandleEvent(onlyOnIsland = IslandType.MINESHAFT)
+    public void onEntityClick(EntityClickEvent event) {
+        CorpseEsp.clicked(event.getClickedEntity());
     }
 
     /** Mute Corpses, as YOTS Ball's: the Organ Donor's corpse sound, muted in every mineshaft (SkyHanni's waits till all are found). */

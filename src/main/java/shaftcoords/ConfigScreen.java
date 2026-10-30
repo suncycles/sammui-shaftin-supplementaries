@@ -14,12 +14,13 @@ import java.util.Locale;
 import java.util.function.Consumer;
 
 /**
- * /sss: SAMMUI SHAFTIN SUPPLEMENTARIES' settings (Config), saved when you close it. The main toggles, the ESP's life and its
- * colours (hex, a swatch beside each), and a button per route: green loads when you enter its mineshaft, red doesn't.
+ * /sss: SAMMUI SHAFTIN SUPPLEMENTARIES' settings (Config), saved when you close it. The main toggles, the Profit Tracker's
+ * (ProfitScreen), the ESP's life and its colours (hex, a swatch beside each), and a button per route: green loads when you
+ * enter its mineshaft, red doesn't.
  */
 final class ConfigScreen extends Screen {
     private static final int W = 400, COL = 80;  // the settings' width, centred; a colour's column
-    private static final int TOGGLES = 22, BOXES = 58, ROUTES = 96;  // rows' tops
+    private static final int TOGGLES = 22, MORE = 44, BOXES = 80, ROUTES = 118;  // rows' tops
     private static final int GREY = 0xFFA0A0A0;
     private final Config cfg = Config.INSTANCE;
 
@@ -37,6 +38,10 @@ final class ConfigScreen extends Screen {
                 .setTooltip(Tooltip.create(Component.literal("The mineshaft and its corpses on screen when they're found: PERI 1 2L 1U")));
         addRenderableWidget(CycleButton.onOffBuilder(cfg.muteCorpses).create(x + 300, TOGGLES, 100, 20, Component.literal("Mute corpses"), (b, v) -> cfg.muteCorpses = v))
                 .setTooltip(Tooltip.create(Component.literal("Mute the Organ Donor's corpse sound in every mineshaft")));
+        addRenderableWidget(CycleButton.onOffBuilder(cfg.buggedPity).create(x, MORE, 98, 20, Component.literal("Bugged pity"), (b, v) -> cfg.buggedPity = v))
+                .setTooltip(Tooltip.create(Component.literal("BUGGED PITY and a jingle when mining a block in the Glacite Tunnels doesn't move the tab's pity in 3 s")));
+        addRenderableWidget(Button.builder(Component.literal("Mining Profit Tracker..."), b -> minecraft.gui.setScreen(new ProfitScreen(this)))
+                .bounds(x + 100, MORE, 198, 20).build());
         box(x, COL - 10, String.valueOf(cfg.espLife), s -> {
             if (s.matches("\\d{1,5}")) cfg.espLife = Integer.parseInt(s);
         }).setTooltip(Tooltip.create(Component.literal("Seconds each corpse's box shows once it's found; 0: till you leave")));

@@ -27,7 +27,7 @@ enum Corpse {
 
     /**
      * The title for the corpses found in mineshaft `shaft` ("§2PERI 1", in SkyHanni's colour; null till SkyHanni knows):
-     * "§2PERI 1 §92L §61U" (Lapis, Umber, Tungsten, Vanguard, those with none left out), "" for no corpses.
+     * "§2PERI 1 §92L §61U" (Lapis, Umber, Tungsten, Vanguard, those with none left out); with no corpses, the mineshaft.
      */
     static String title(String shaft, Map<Corpse, Integer> found) {
         StringBuilder s = new StringBuilder();
@@ -35,7 +35,7 @@ enum Corpse {
             int n = found.getOrDefault(c, 0);
             if (n > 0) s.append(s.isEmpty() ? "" : " ").append('§').append(c.format).append(n).append(c.letter);
         }
-        return s.isEmpty() || shaft == null ? s.toString() : shaft + " " + s;
+        return shaft == null ? s.toString() : s.isEmpty() ? shaft : shaft + " " + s;
     }
 
     /** "FFAA00" (or "#FFAA00") as RGB, or `fallback` if it isn't 6 hex digits. */
